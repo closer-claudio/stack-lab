@@ -1,0 +1,40 @@
+name: gate
+on:
+  pull_request:
+permissions: {}
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: probe
+        env:
+          STACK: ${{ toJSON(github.event.pull_request.stack) }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          echo "event.action=$ACTION"
+          echo "GITHUB_BASE_REF=$GITHUB_BASE_REF GITHUB_HEAD_REF=$GITHUB_HEAD_REF GITHUB_REF=$GITHUB_REF"
+          echo "pull_request.base.ref=$PR_BASE base.sha=$PR_BASE_SHA head.sha=$PR_HEAD_SHA"
+          echo "stack=$STACK"
+          echo "HEAD=$(git rev-parse HEAD)"
+          # limen's lint-commits range logic, verbatim in effect
+          range=""
+          if git rev-parse --verify -q "origin/$GITHUB_BASE_REF" >/dev/null; then range="origin/${GITHUB_BASE_REF}..HEAD"; fi
+          echo "lint-commits range=$range"
+          git -c gpg.ssh.allowedSignersFile=.lint-signers log --no-merges --format='%h %G? %ae/%ce %s' "$range" || true
+          echo "--- signature check as limen does it"
+          bad=0
+          while IFS=$'\t' read -r sha ae ce; do
+            [ -n "$sha" ] || continue
+            s=$(git -c gpg.ssh.allowedSignersFile=.lint-signers log -1 --format=%G? "$sha" 2>/dev/null || true)
+            echo "$sha $ae $ce sig=$s"; [ "$s" = G ] || bad=1
+          done < <(git log --no-merges --format='%H%x09%ae%x09%ce' "$range")
+          echo "unsigned_in_range=$bad"
+          exit $bad

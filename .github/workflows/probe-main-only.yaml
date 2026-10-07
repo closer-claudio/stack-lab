@@ -1,0 +1,13 @@
+name: probe-main-only
+on:
+  pull_request:
+    branches: [main]
+permissions: {}
+jobs:
+  main-only:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - env:
+          STACK: ${{ toJSON(github.event.pull_request.stack) }}
+        run: echo "ran for base=$GITHUB_BASE_REF stack=$STACK"
